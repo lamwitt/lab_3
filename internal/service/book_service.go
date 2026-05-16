@@ -11,7 +11,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var ErrNotFound = errors.New("book not found")
+var (
+	ErrNotFound  = errors.New("book not found")
+	ErrForbidden = errors.New("forbidden")
+)
 
 type BookService struct {
 	repo *repository.BookRepository
@@ -33,8 +36,8 @@ type PaginatedBooksResponse struct {
 	Meta PaginationMeta `json:"meta"`
 }
 
-func (s *BookService) GetAll(p *dto.PaginationDTO) (*PaginatedBooksResponse, error) {
-	result, err := s.repo.FindAll(p)
+func (s *BookService) GetAll(userID uuid.UUID, p *dto.PaginationDTO) (*PaginatedBooksResponse, error) {
+	result, err := s.repo.FindAll(userID, p)
 	if err != nil {
 		return nil, err
 	}
@@ -55,19 +58,23 @@ func (s *BookService) GetAll(p *dto.PaginationDTO) (*PaginatedBooksResponse, err
 	}, nil
 }
 
-func (s *BookService) GetByID(id uuid.UUID) (*models.Book, error) {
-	book, err := s.repo.FindByID(id)
+func (s *BookService) GetByID(userID, bookID uuid.UUID) (*models.Book, error) {
+	book, err := s.repo.FindByID(bookID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
+	if book.UserID != userID {
+		return nil, ErrNotFound
+	}
 	return book, nil
 }
 
-func (s *BookService) Create(d *dto.CreateBookDTO) (*models.Book, error) {
+func (s *BookService) Create(userID uuid.UUID, d *dto.CreateBookDTO) (*models.Book, error) {
 	book := &models.Book{
+		UserID:      userID,
 		Title:       d.Title,
 		Author:      d.Author,
 		Description: d.Description,
@@ -79,8 +86,8 @@ func (s *BookService) Create(d *dto.CreateBookDTO) (*models.Book, error) {
 	return book, nil
 }
 
-func (s *BookService) Update(id uuid.UUID, d *dto.UpdateBookDTO) (*models.Book, error) {
-	book, err := s.GetByID(id)
+func (s *BookService) Update(userID, bookID uuid.UUID, d *dto.UpdateBookDTO) (*models.Book, error) {
+	book, err := s.GetByID(userID, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +103,8 @@ func (s *BookService) Update(id uuid.UUID, d *dto.UpdateBookDTO) (*models.Book, 
 	return book, nil
 }
 
-func (s *BookService) Patch(id uuid.UUID, d *dto.PatchBookDTO) (*models.Book, error) {
-	book, err := s.GetByID(id)
+func (s *BookService) Patch(userID, bookID uuid.UUID, d *dto.PatchBookDTO) (*models.Book, error) {
+	book, err := s.GetByID(userID, bookID)
 	if err != nil {
 		return nil, err
 	}
@@ -121,9 +128,9 @@ func (s *BookService) Patch(id uuid.UUID, d *dto.PatchBookDTO) (*models.Book, er
 	return book, nil
 }
 
-func (s *BookService) Delete(id uuid.UUID) error {
-	if _, err := s.GetByID(id); err != nil {
+func (s *BookService) Delete(userID, bookID uuid.UUID) error {
+	if _, err := s.GetByID(userID, bookID); err != nil {
 		return err
 	}
-	return s.repo.Delete(id)
+	return s.repo.Delete(bookID)
 }
